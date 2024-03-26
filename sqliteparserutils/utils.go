@@ -17,7 +17,7 @@ type SplitStatementExtraInfo struct {
 func SplitStatement(statement string) (stmts []string, extraInfo SplitStatementExtraInfo) {
 	tokenStream := createTokenStream(statement)
 
-	stmtIntervals := make([]*antlr.Interval, 0)
+	stmtIntervals := make([]antlr.Interval, 0)
 	currentIntervalStart := -1
 	insideCreateTriggerStmt := false
 	insideMultilineComment := false
