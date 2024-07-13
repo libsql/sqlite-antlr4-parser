@@ -158,6 +158,12 @@ func TestSplitStatement(t *testing.T) {
 			extraInfo: generateSimpleSplitStatementExtraInfo(sqliteparser.SQLiteLexerEND_),
 		},
 		{
+			name:      "CompleteCreateTempTriggerStatement",
+			value:     "CREATE TEMP TRIGGER update_updated_at AFTER UPDATE ON users FOR EACH ROW BEGIN UPDATE users SET updated_at = 0 WHERE id = NEW.id; END",
+			stmts:     []string{"CREATE TEMP TRIGGER update_updated_at AFTER UPDATE ON users FOR EACH ROW BEGIN UPDATE users SET updated_at = 0 WHERE id = NEW.id; END"},
+			extraInfo: generateSimpleSplitStatementExtraInfo(sqliteparser.SQLiteLexerEND_),
+		},
+		{
 			name:      "IncompleteCreateTriggerStatement",
 			value:     "CREATE TRIGGER update_updated_at AFTER UPDATE ON users FOR EACH ROW BEGIN UPDATE users SET updated_at = 0 WHERE id = NEW.id;",
 			stmts:     []string{"CREATE TRIGGER update_updated_at AFTER UPDATE ON users FOR EACH ROW BEGIN UPDATE users SET updated_at = 0 WHERE id = NEW.id;"},

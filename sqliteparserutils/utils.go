@@ -14,105 +14,109 @@ type SplitStatementExtraInfo struct {
 	LastTokenType                    int
 }
 
-func SplitStatement(statement string) (stmts []string, extraInfo SplitStatementExtraInfo) {
-	tokenStream := createTokenStream(statement)
+type StatementIterator struct {
+	tokenizer    *BufferedTokenizer
+	currentToken antlr.Token
+}
 
-	stmtIntervals := make([]antlr.Interval, 0)
-	currentIntervalStart := -1
-	insideCreateTriggerStmt := false
-	insideMultilineComment := false
+func CreateStatementIterator(statement string) *StatementIterator {
+	return &StatementIterator{tokenizer: createStringTokenizer(statement)}
+}
 
-	var previousToken antlr.Token
-	var currentToken antlr.Token
-	for currentToken = tokenStream.LT(1); currentToken.GetTokenType() != antlr.TokenEOF; currentToken = tokenStream.LT(1) {
-		// We break loop here because we're sure multiline comment didn't finished, otherwise lexer would have just ignored
-		// it
-		if atIncompleteMultilineCommentStart(tokenStream) {
+func (iterator *StatementIterator) Next() (statement string, extraInfo SplitStatementExtraInfo, isEOF bool) {
+	var (
+		insideCreateTriggerStmt = false
+		insideMultilineComment  = false
+		startPosition           = -1
+		previousToken           = iterator.currentToken
+	)
+	for !iterator.tokenizer.IsEOF() {
+		// We break loop here because we're sure multiline comment didn't finished, otherwise lexer would have just ignored it
+		if atIncompleteMultilineCommentStart(iterator.tokenizer) {
 			insideMultilineComment = true
 			break
 		}
-
-		if currentIntervalStart == -1 {
-			if currentToken.GetTokenType() == sqliteparser.SQLiteLexerSCOL {
-				previousToken = currentToken
-				tokenStream.Consume()
-				continue
-			}
-			currentIntervalStart = currentToken.GetTokenIndex()
-
-			if atCreateTriggerStart(tokenStream) {
-				insideCreateTriggerStmt = true
-				previousToken = currentToken
-				tokenStream.Consume()
-				continue
-			}
-
+		iterator.currentToken = iterator.tokenizer.Get(0)
+		// skip empty statements (e.g. ... ; /* some comment */ ; ... )
+		if startPosition == -1 && iterator.currentToken.GetTokenType() == sqliteparser.SQLiteLexerSCOL {
+			iterator.tokenizer.Consume()
+			continue
 		}
-
-		if insideCreateTriggerStmt {
-			if currentToken.GetTokenType() == sqliteparser.SQLiteLexerEND_ {
+		if startPosition == -1 {
+			// initialize current statement start position
+			insideCreateTriggerStmt = atCreateTriggerStart(iterator.tokenizer)
+			startPosition = iterator.currentToken.GetStart()
+		} else if insideCreateTriggerStmt {
+			// extend trigger creation statement to include END token after last semicolon
+			if iterator.currentToken.GetTokenType() == sqliteparser.SQLiteLexerEND_ {
 				insideCreateTriggerStmt = false
 			}
-		} else if currentToken.GetTokenType() == sqliteparser.SQLiteLexerSCOL {
-			stmtIntervals = append(stmtIntervals, antlr.NewInterval(currentIntervalStart, previousToken.GetTokenIndex()))
-			currentIntervalStart = -1
+		} else if iterator.currentToken.GetTokenType() == sqliteparser.SQLiteLexerSCOL {
+			// finish current statement (don't forget to consume as we are breaking here)
+			iterator.tokenizer.Consume()
+			break
 		}
-
-		previousToken = currentToken
-		tokenStream.Consume()
+		previousToken = iterator.currentToken
+		iterator.tokenizer.Consume()
 	}
-
-	if currentIntervalStart != -1 && previousToken != nil {
-		stmtIntervals = append(stmtIntervals, antlr.NewInterval(currentIntervalStart, previousToken.GetTokenIndex()))
-	}
-
-	stmts = make([]string, 0)
-	for _, stmtInterval := range stmtIntervals {
-		stmts = append(stmts, tokenStream.GetTextFromInterval(stmtInterval))
-	}
-
 	lastTokenType := antlr.TokenInvalidType
-	if previousToken != nil {
-		lastTokenType = previousToken.GetTokenType()
+	if iterator.currentToken != nil {
+		lastTokenType = iterator.currentToken.GetTokenType()
 	}
-	return stmts, SplitStatementExtraInfo{IncompleteCreateTriggerStatement: insideCreateTriggerStmt, IncompleteMultilineComment: insideMultilineComment, LastTokenType: lastTokenType}
+	extraInfo = SplitStatementExtraInfo{
+		IncompleteCreateTriggerStatement: insideCreateTriggerStmt,
+		IncompleteMultilineComment:       insideMultilineComment,
+		LastTokenType:                    lastTokenType,
+	}
+	statement = ""
+	if startPosition != -1 {
+		statement = iterator.tokenizer.source.GetInputStream().GetText(startPosition, previousToken.GetStop())
+	}
+	return statement, extraInfo, iterator.tokenizer.IsEOF() || insideMultilineComment
 }
 
-func atCreateTriggerStart(tokenStream antlr.TokenStream) bool {
-	if tokenStream.LT(1).GetTokenType() != sqliteparser.SQLiteLexerCREATE_ {
-		return false
-	}
+func SplitStatement(statement string) (statements []string, extraInfo SplitStatementExtraInfo) {
+	iterator := CreateStatementIterator(statement)
 
-	if tokenStream.LT(2).GetTokenType() == sqliteparser.SQLiteLexerTRIGGER_ {
+	statements = make([]string, 0)
+	for {
+		statement, extraInfo, isEOF := iterator.Next()
+		if statement != "" {
+			statements = append(statements, statement)
+		}
+		if isEOF {
+			return statements, extraInfo
+		}
+	}
+}
+
+func atCreateTriggerStart(tokenStream *BufferedTokenizer) bool {
+	token1 := tokenStream.Get(0).GetTokenType()
+	token2 := tokenStream.Get(1).GetTokenType()
+	token3 := tokenStream.Get(2).GetTokenType()
+
+	if token1 == sqliteparser.SQLiteLexerCREATE_ && token2 == sqliteparser.SQLiteLexerTRIGGER_ {
 		return true
 	}
-
-	if tokenStream.LT(2).GetTokenType() == sqliteparser.SQLiteLexerTEMP_ || tokenStream.LT(2).GetTokenType() == sqliteparser.SQLiteLexerTEMPORARY_ &&
-		tokenStream.LT(3).GetTokenType() == sqliteparser.SQLiteLexerTRIGGER_ {
+	if token1 == sqliteparser.SQLiteLexerCREATE_ &&
+		(token2 == sqliteparser.SQLiteLexerTEMP_ || token2 == sqliteparser.SQLiteLexerTEMPORARY_) &&
+		token3 == sqliteparser.SQLiteLexerTRIGGER_ {
 		return true
 	}
-
 	return false
-
 }
 
 // Note: Only starts for incomplete multiline comments will be detected cause lexer automatically ignores complete
 // multiline comments
-func atIncompleteMultilineCommentStart(tokenStream antlr.TokenStream) bool {
-	if tokenStream.LT(1).GetTokenType() != sqliteparser.SQLiteLexerDIV {
-		return false
-	}
-
-	if tokenStream.LT(2).GetTokenType() == sqliteparser.SQLiteLexerSTAR {
-		return true
-	}
-
-	return false
+func atIncompleteMultilineCommentStart(stream *BufferedTokenizer) bool {
+	token1 := stream.Get(0).GetTokenType()
+	token2 := stream.Get(1).GetTokenType()
+	return token1 == sqliteparser.SQLiteLexerDIV && token2 == sqliteparser.SQLiteLexerSTAR
 }
 
-func createTokenStream(statement string) *antlr.CommonTokenStream {
+func createStringTokenizer(statement string) *BufferedTokenizer {
 	statementStream := antlr.NewInputStream(statement)
 
 	lexer := sqliteparser.NewSQLiteLexer(statementStream)
-	return antlr.NewCommonTokenStream(lexer, 0)
+	return createBufferedTokenizer(lexer, 3)
 }
