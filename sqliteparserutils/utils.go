@@ -15,7 +15,7 @@ type SplitStatementExtraInfo struct {
 }
 
 type StatementIterator struct {
-	tokenizer    *BufferedTokenizer
+	tokenizer    *bufferedTokenizer
 	currentToken antlr.Token
 }
 
@@ -90,7 +90,7 @@ func SplitStatement(statement string) (statements []string, extraInfo SplitState
 	}
 }
 
-func atCreateTriggerStart(tokenStream *BufferedTokenizer) bool {
+func atCreateTriggerStart(tokenStream *bufferedTokenizer) bool {
 	token1 := tokenStream.Get(0).GetTokenType()
 	token2 := tokenStream.Get(1).GetTokenType()
 	token3 := tokenStream.Get(2).GetTokenType()
@@ -108,13 +108,13 @@ func atCreateTriggerStart(tokenStream *BufferedTokenizer) bool {
 
 // Note: Only starts for incomplete multiline comments will be detected cause lexer automatically ignores complete
 // multiline comments
-func atIncompleteMultilineCommentStart(stream *BufferedTokenizer) bool {
+func atIncompleteMultilineCommentStart(stream *bufferedTokenizer) bool {
 	token1 := stream.Get(0).GetTokenType()
 	token2 := stream.Get(1).GetTokenType()
 	return token1 == sqliteparser.SQLiteLexerDIV && token2 == sqliteparser.SQLiteLexerSTAR
 }
 
-func createStringTokenizer(statement string) *BufferedTokenizer {
+func createStringTokenizer(statement string) *bufferedTokenizer {
 	statementStream := antlr.NewInputStream(statement)
 
 	lexer := sqliteparser.NewSQLiteLexer(statementStream)
