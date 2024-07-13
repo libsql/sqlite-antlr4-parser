@@ -19,7 +19,8 @@ type StatementIterator struct {
 	currentToken antlr.Token
 }
 
-func CreateStatementIterator(statement string) *StatementIterator {
+// keep createStatementIterator here for the future uses but do not expose it for now as we will not use it immediately
+func createStatementIterator(statement string) *StatementIterator {
 	return &StatementIterator{tokenizer: createStringTokenizer(statement)}
 }
 
@@ -76,7 +77,7 @@ func (iterator *StatementIterator) Next() (statement string, extraInfo SplitStat
 }
 
 func SplitStatement(statement string) (statements []string, extraInfo SplitStatementExtraInfo) {
-	iterator := CreateStatementIterator(statement)
+	iterator := createStatementIterator(statement)
 
 	statements = make([]string, 0)
 	for {
