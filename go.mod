@@ -1,3 +1,4 @@
+// Deprecated: Use github.com/tursodatabase/libsql-client-go instead
 module github.com/libsql/sqlite-antlr4-parser
 
 go 1.19

@@ -1,3 +1,5 @@
+# THIS PROJECT IS DISCONTINUED! PLEASE USE github.com/tursodatabase/libsql-client-go INSTEAD!
+
 # ANTLR SQLite Parser
 
 This project is just a generation of a [ANTLR4](https://www.antlr.org/) go parser using [SQLite grammar](https://github.com/antlr/grammars-v4/tree/master/sql/sqlite) from [antlr/grammars-v4](https://github.com/antlr/grammars-v4/tree/master) project. Its only reason to exist is to avoid forcing everyone that want a simple parser to install JAVA.
